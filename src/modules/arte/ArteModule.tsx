@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { RefreshCw, Download, Wand2, Search, Upload, Rss, Link } from 'lucide-react';
 import { ImageUploader } from './ImageUploader';
 import { ThinkingLog } from './ThinkingLog';
+import LogoOverlayEditor from '../../components/LogoOverlayEditor';
 import type { GeneratedStory, Product, Collection } from '../../types';
 import { parseXML } from '../../utils/parseXML';
 import { fetchImageAsBase64, getCollections, addArtToCollection, uploadFromUrl } from '../../api';
@@ -99,9 +100,10 @@ const generateImage = async (referenceImage: string, sceneDescription: string, a
 
 interface ArteModuleProps {
   xmlContent: string;
+  logoUrl: string;
 }
 
-export default function ArteModule({ xmlContent }: ArteModuleProps) {
+export default function ArteModule({ xmlContent, logoUrl }: ArteModuleProps) {
   const [sourceTab, setSourceTab] = useState<'upload' | 'feed'>('upload');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -115,6 +117,7 @@ export default function ArteModule({ xmlContent }: ArteModuleProps) {
   const [linkCollectionId, setLinkCollectionId] = useState('');
   const [linking, setLinking] = useState(false);
   const [linkedMsg, setLinkedMsg] = useState<string | null>(null);
+  const [controlsEl, setControlsEl] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => { getCollections().then(setCollections); }, []);
 
@@ -181,14 +184,55 @@ export default function ArteModule({ xmlContent }: ArteModuleProps) {
     }
   };
 
-  const downloadImage = () => {
+  const downloadImage = async () => {
     if (!story?.imageUrl) return;
-    const link = document.createElement('a');
-    link.href = story.imageUrl;
-    link.download = `arte-${Date.now()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const targetAR = aspectRatio === '9:16' ? 9 / 16 : 1;
+    try {
+      const bgBase64 = await fetchImageAsBase64(story.imageUrl).catch(async () => {
+        const res = await fetch(story.imageUrl!);
+        const buf = await res.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let bin = '';
+        bytes.forEach(b => bin += String.fromCharCode(b));
+        return `data:image/png;base64,${btoa(bin)}`;
+      });
+      await new Promise<void>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const srcAR = img.naturalWidth / img.naturalHeight;
+          let sx = 0, sy = 0, sw = img.naturalWidth, sh = img.naturalHeight;
+          if (Math.abs(srcAR - targetAR) > 0.01) {
+            if (srcAR > targetAR) {
+              sw = Math.round(sh * targetAR);
+              sx = Math.round((img.naturalWidth - sw) / 2);
+            } else {
+              sh = Math.round(sw / targetAR);
+              sy = Math.round((img.naturalHeight - sh) / 2);
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = sw;
+          canvas.height = sh;
+          canvas.getContext('2d')!.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+          canvas.toBlob(blob => {
+            if (!blob) { reject(new Error('failed')); return; }
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `arte-${Date.now()}.png`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+            resolve();
+          }, 'image/png');
+        };
+        img.onerror = reject;
+        img.src = bgBase64;
+      });
+    } catch {
+      const link = document.createElement('a');
+      link.href = story.imageUrl;
+      link.download = `arte-${Date.now()}.png`;
+      link.click();
+    }
   };
 
   const isLoading = status === 'planning' || status === 'generating';
@@ -361,81 +405,96 @@ export default function ArteModule({ xmlContent }: ArteModuleProps) {
       {/* Preview */}
       <div className="lg:col-span-7 flex flex-col items-center">
         <div className="sticky top-24 w-full flex flex-col items-center">
-          <div className={`relative w-full max-w-sm bg-slate-950 rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-800 group transition-all duration-500 ${
-            aspectRatio === '9:16' ? 'aspect-[9/16]' : 'aspect-square'
-          }`}>
-            {story?.imageUrl ? (
-              <img src={story.imageUrl} alt="Arte gerada" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-slate-950">
-                {isLoading ? (
-                  <div className="animate-pulse flex flex-col items-center">
-                    <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4" />
-                    <p className="text-emerald-400 font-bold">
-                      {status === 'planning' ? 'PLANEJANDO COMPOSIÇÃO...' : 'GERANDO ARTE...'}
-                    </p>
-                    <p className="text-slate-500 text-sm mt-2">Formato {aspectRatio}</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="w-20 h-20 bg-slate-800 rounded-2xl mb-4 flex items-center justify-center text-slate-600">
-                      <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
+          <div className="w-full max-w-sm">
+            {/* Aspect-ratio frame: always visible, shows image when ready */}
+            <div className={`relative bg-slate-950 rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-800 transition-all duration-500 ${
+              aspectRatio === '9:16' ? 'aspect-[9/16]' : 'aspect-square'
+            }`}>
+              {story?.imageUrl ? (
+                <LogoOverlayEditor
+                  imageUrl={story.imageUrl}
+                  logoUrl={logoUrl}
+                  onDownloadOriginal={downloadImage}
+                  externalControlsTarget={controlsEl}
+                  aspectRatio={aspectRatio}
+                  fillContainer
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center">
+                  {isLoading ? (
+                    <div className="animate-pulse flex flex-col items-center">
+                      <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4" />
+                      <p className="text-emerald-400 font-bold">
+                        {status === 'planning' ? 'PLANEJANDO COMPOSIÇÃO...' : 'GERANDO ARTE...'}
+                      </p>
+                      <p className="text-slate-500 text-sm mt-2">Formato {aspectRatio}</p>
                     </div>
-                    <h3 className="text-2xl font-bold text-slate-300">PREVIEW</h3>
-                    <p className="text-slate-500 mt-2 text-sm">O resultado aparecerá aqui no formato {aspectRatio}.</p>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-
-          {story?.imageUrl && (
-            <div className="mt-6 w-full space-y-4">
-              <div className="flex gap-4">
-                <button onClick={downloadImage} className="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-5 rounded-lg flex items-center gap-2">
-                  <Download size={16} /> Download
-                </button>
-                <button onClick={handleGenerate} disabled={isLoading} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-bold py-2 px-5 rounded-lg flex items-center gap-2 disabled:opacity-50">
-                  <RefreshCw size={16} /> Gerar Novamente
-                </button>
-              </div>
-
-              {aspectRatio === '9:16' && collections.length > 0 && (
-                <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-3">
-                  <p className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                    <Link size={14} className="text-emerald-400" /> Vincular à Coleção da Agenda
-                  </p>
-                  <div className="flex gap-2">
-                    <select
-                      value={linkCollectionId}
-                      onChange={e => { setLinkCollectionId(e.target.value); setLinkedMsg(null); }}
-                      className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
-                    >
-                      <option value="">Selecione a coleção...</option>
-                      {collections.filter(c => c.enabled).map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={handleLinkToCollection}
-                      disabled={!linkCollectionId || linking}
-                      className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2 whitespace-nowrap"
-                    >
-                      {linking ? <RefreshCw size={14} className="animate-spin" /> : <Link size={14} />}
-                      {linking ? 'Salvando...' : 'Vincular'}
-                    </button>
-                  </div>
-                  {linkedMsg && (
-                    <p className={`text-xs ${linkedMsg.startsWith('Erro') ? 'text-red-400' : 'text-emerald-400'}`}>
-                      {linkedMsg}
-                    </p>
+                  ) : (
+                    <>
+                      <div className="w-20 h-20 bg-slate-800 rounded-2xl mb-4 flex items-center justify-center text-slate-600">
+                        <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <h3 className="text-2xl font-bold text-slate-300">PREVIEW</h3>
+                      <p className="text-slate-500 mt-2 text-sm">O resultado aparecerá aqui no formato {aspectRatio}.</p>
+                    </>
                   )}
                 </div>
               )}
             </div>
-          )}
+
+            {/* Logo controls portal target — controls appear here, outside overflow-hidden */}
+            <div ref={setControlsEl} />
+
+            {story?.imageUrl && (
+              <div className="mt-4 space-y-4">
+                <div className="flex gap-3">
+                  {!logoUrl && (
+                    <button onClick={downloadImage} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2">
+                      <Download size={16} /> Download
+                    </button>
+                  )}
+                  <button onClick={handleGenerate} disabled={isLoading} className="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50">
+                    <RefreshCw size={16} /> Gerar Novamente
+                  </button>
+                </div>
+
+                {aspectRatio === '9:16' && collections.length > 0 && (
+                  <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-3">
+                    <p className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                      <Link size={14} className="text-emerald-400" /> Vincular à Coleção da Agenda
+                    </p>
+                    <div className="flex gap-2">
+                      <select
+                        value={linkCollectionId}
+                        onChange={e => { setLinkCollectionId(e.target.value); setLinkedMsg(null); }}
+                        className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
+                      >
+                        <option value="">Selecione a coleção...</option>
+                        {collections.filter(c => c.enabled).map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={handleLinkToCollection}
+                        disabled={!linkCollectionId || linking}
+                        className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2 whitespace-nowrap"
+                      >
+                        {linking ? <RefreshCw size={14} className="animate-spin" /> : <Link size={14} />}
+                        {linking ? 'Salvando...' : 'Vincular'}
+                      </button>
+                    </div>
+                    {linkedMsg && (
+                      <p className={`text-xs ${linkedMsg.startsWith('Erro') ? 'text-red-400' : 'text-emerald-400'}`}>
+                        {linkedMsg}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

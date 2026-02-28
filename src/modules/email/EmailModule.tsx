@@ -4,6 +4,7 @@ import { Trash2, RefreshCw, Check, ChevronRight, FileText, Calendar, Save, Setti
 import type { SentLog, EmailDraft } from '../../types';
 import { getLog, addToLog, deleteLog, getSetting, saveSetting } from '../../api';
 import { parseXML } from '../../utils/parseXML';
+import LogoOverlayEditor from '../../components/LogoOverlayEditor';
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 
@@ -93,17 +94,18 @@ const DEFAULT_INSTRUCTIONS_SINGLE = `Escreva um e-mail de vendas CURTO em PT-BR.
 
 const DEFAULT_INSTRUCTIONS_COLLECTION = `Escreva um e-mail de coleção em PT-BR. Máximo 100 palavras. Tom: urgente, "must have". Conecte os produtos pelo tema. Destaque o primeiro produto e faça cross-sell dos demais.`;
 
-const DEFAULT_IMAGE_PROMPT_REF = `Aplique esta estampa na frente de um(a) {style}, preservando proporções e aspect ratio originais. Estampa centralizada no peito, escalonada proporcionalmente à peça — não esticar nem cortar. Foto de jovem vestindo, estilo street, fundo urbano desfocado, luz natural, estampa totalmente visível.`;
+const DEFAULT_IMAGE_PROMPT_REF = `Foto lifestyle de moda de um(a) jovem de corpo inteiro vestindo um(a) {style} com a estampa da imagem de referência centralizada no peito e claramente visível. Rosto e cabeça incluídos no enquadramento — não cortar acima do pescoço. Pose relaxada olhando para a câmera. Fundo urbano desfocado, luz natural, lente 50mm, foto-realista. Não é foto de produto — é uma cena de vida real.`;
 
-const DEFAULT_IMAGE_PROMPT_NOREF = `Foto editorial de moda. Jovem vestindo um(a) {style} com estampa geek: "{name}" centralizada no peito, proporções preservadas. Fundo urbano, luz natural, lente 85mm, estampa claramente visível.`;
+const DEFAULT_IMAGE_PROMPT_NOREF = `Foto lifestyle de moda de um(a) jovem de corpo inteiro vestindo um(a) {style} com estampa geek "{name}" no peito. Rosto e cabeça incluídos no enquadramento — não cortar acima do pescoço. Pose relaxada olhando para a câmera. Fundo urbano desfocado, luz natural, lente 50mm, foto-realista. Não é foto de produto — é uma cena de vida real.`;
 
 interface EmailModuleProps {
   xmlContent: string;
   refreshFeed: () => Promise<string>;
   fetchingFeed: boolean;
+  logoUrl: string;
 }
 
-export default function EmailModule({ xmlContent, refreshFeed, fetchingFeed }: EmailModuleProps) {
+export default function EmailModule({ xmlContent, refreshFeed, fetchingFeed, logoUrl }: EmailModuleProps) {
   const [logs, setLogs] = useState<SentLog[]>([]);
   const [drafts, setDrafts] = useState<EmailDraft[]>([]);
   const [loading, setLoading] = useState(false);
@@ -426,7 +428,17 @@ Return JSON: { "subject": "string", "body": "html string", "cta_text": "string" 
                     </div>
                     {drafts[selectedDraftIndex].generated_image && (
                       <div className="mb-6 rounded-xl overflow-hidden shadow-lg">
-                        <img src={drafts[selectedDraftIndex].generated_image} alt="AI" className="w-full h-auto" />
+                        <LogoOverlayEditor
+                          imageUrl={drafts[selectedDraftIndex].generated_image!}
+                          logoUrl={logoUrl}
+                          fillContainer={false}
+                          onDownloadOriginal={() => {
+                            const a = document.createElement('a');
+                            a.href = drafts[selectedDraftIndex].generated_image!;
+                            a.download = `imagem-email-${Date.now()}.png`;
+                            a.click();
+                          }}
+                        />
                       </div>
                     )}
                     <div className="prose prose-slate max-w-none prose-a:text-emerald-700" dangerouslySetInnerHTML={{ __html: drafts[selectedDraftIndex].body }} />
