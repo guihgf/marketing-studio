@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Trash2, RefreshCw, Check, ChevronRight, FileText, Calendar, Save, Settings, RotateCcw } from 'lucide-react';
+import { Trash2, RefreshCw, Check, ChevronRight, FileText, Calendar, Save, Settings, RotateCcw, Download } from 'lucide-react';
 import type { SentLog, EmailDraft } from '../../types';
 import { getLog, addToLog, deleteLog, getSetting, saveSetting } from '../../api';
 import { parseXML } from '../../utils/parseXML';

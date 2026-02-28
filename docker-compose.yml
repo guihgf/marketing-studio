@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   db:
@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5445:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U studio -d marketing_studio"]
       interval: 5s
@@ -20,7 +20,7 @@ services:
   app:
     build: .
     ports:
-      - "3000:3000"
+      - "3020:3000"
     environment:
       DATABASE_URL: postgresql://studio:studio_pass@db:5432/marketing_studio
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
