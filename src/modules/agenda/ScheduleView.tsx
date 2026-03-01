@@ -53,7 +53,7 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
   const [loadingItems, setLoadingItems] = useState<Set<string>>(new Set());
   const [collapsedDays, setCollapsedDays] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [publishModal, setPublishModal] = useState<{ item: ScheduledItem; dayIndex: number } | null>(null);
+  const [publishModal, setPublishModal] = useState<{ item: ScheduledItem; dayIndex: number; date: string } | null>(null);
 
   const toggleDay = (date: string) => setCollapsedDays(prev => ({ ...prev, [date]: !prev[date] }));
 
@@ -158,6 +158,17 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
     } catch { window.open(url, '_blank'); }
   };
 
+  const handleQueued = (dayIndex: number, slotId: string, queueId: number) => {
+    setResults(prev => {
+      if (!prev) return null;
+      const nr = [...prev];
+      const idx = nr[dayIndex].items.findIndex(i => i.slotId === slotId);
+      if (idx !== -1) nr[dayIndex].items[idx] = { ...nr[dayIndex].items[idx], instagramQueueId: queueId };
+      return nr;
+    });
+    setPublishModal(null);
+  };
+
   const handlePublished = (dayIndex: number, slotId: string, postId: string) => {
     setResults(prev => {
       if (!prev) return null;
@@ -234,7 +245,7 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
                       const uid = `${dayIndex}-${item.slotId}`;
                       const loading = loadingItems.has(uid);
                       return (
-                        <div key={item.slotId} className={`relative flex flex-col sm:flex-row bg-slate-900/40 rounded-lg overflow-hidden border ${item.instagramPostId ? 'border-pink-500/60' : item.isPrime ? 'border-purple-500/50' : 'border-slate-700/50'}`}>
+                        <div key={item.slotId} className={`relative flex flex-col sm:flex-row bg-slate-900/40 rounded-lg overflow-hidden border ${item.instagramPostId ? 'border-emerald-500/60' : item.instagramQueueId ? 'border-pink-500/60' : item.isPrime ? 'border-purple-500/50' : 'border-slate-700/50'}`}>
                           <div className={`sm:w-24 flex flex-row sm:flex-col justify-between sm:justify-center items-center p-3 ${item.isPrime ? 'bg-purple-900/20 text-purple-300' : 'bg-slate-800 text-slate-400'}`}>
                             <span className="text-xl font-mono font-bold">{item.slotTime}</span>
                             <span className="text-[10px] uppercase font-bold tracking-wider">{item.isPrime ? 'NOBRE' : 'COMUM'}</span>
@@ -248,17 +259,22 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
                                 </div>
                               </div>
                               {item.instagramPostId ? (
+                                <div className="flex items-center justify-center gap-1 bg-emerald-900/30 border border-emerald-500/40 rounded px-2 py-1">
+                                  <CheckCircle size={11} className="text-emerald-400 shrink-0" />
+                                  <span className="text-[9px] font-bold text-emerald-300 uppercase">Publicado</span>
+                                </div>
+                              ) : item.instagramQueueId ? (
                                 <div className="flex items-center justify-center gap-1 bg-pink-900/30 border border-pink-500/40 rounded px-2 py-1">
                                   <CheckCircle size={11} className="text-pink-400 shrink-0" />
-                                  <span className="text-[9px] font-bold text-pink-300 uppercase">Publicado</span>
+                                  <span className="text-[9px] font-bold text-pink-300 uppercase">Agendado</span>
                                 </div>
                               ) : (
                                 <button
-                                  onClick={() => setPublishModal({ item, dayIndex })}
+                                  onClick={() => setPublishModal({ item, dayIndex, date: dayResult.date })}
                                   className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-pink-600/80 to-purple-600/80 hover:from-pink-500 hover:to-purple-500 border border-pink-500/40 rounded px-2 py-1.5 text-white transition-all"
                                 >
                                   <Instagram size={12} />
-                                  <span className="text-[10px] font-bold">Publicar</span>
+                                  <span className="text-[10px] font-bold">Agendar</span>
                                 </button>
                               )}
                             </div>
@@ -367,7 +383,9 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
       {publishModal && (
         <InstagramPublishModal
           item={publishModal.item}
+          date={publishModal.date}
           onClose={() => setPublishModal(null)}
+          onQueued={(queueId) => handleQueued(publishModal.dayIndex, publishModal.item.slotId, queueId)}
           onPublished={(postId) => handlePublished(publishModal.dayIndex, publishModal.item.slotId, postId)}
         />
       )}

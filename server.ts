@@ -75,6 +75,20 @@ async function initDB() {
       is_prime BOOLEAN DEFAULT FALSE,
       sort_order INTEGER DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS instagram_queue (
+      id SERIAL PRIMARY KEY,
+      image_url TEXT NOT NULL,
+      link_url TEXT NOT NULL,
+      link_sticker_x FLOAT DEFAULT 0.5,
+      link_sticker_y FLOAT DEFAULT 0.85,
+      caption TEXT,
+      scheduled_at BIGINT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      ig_post_id TEXT,
+      error TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
   `);
 
   // Seed default user if none exists
@@ -330,92 +344,112 @@ async function startServer() {
     };
   };
 
+  // ── Instagram: helper de publicação real (usado pelo worker) ─────────
+  const publishContainerNow = async (
+    imageUrl: string, linkUrl: string, caption: string | null,
+    accessToken: string, igUserId: string, baseUrl: string,
+  ): Promise<string> => {
+    const fullImageUrl = imageUrl.startsWith('/') ? `${baseUrl}${imageUrl}` : imageUrl;
+
+    // Passo 1: cria container
+    const containerParams = new URLSearchParams({
+      image_url:        fullImageUrl,
+      media_type:       'STORIES',
+      access_token:     accessToken,
+      link_sticker_url: linkUrl,       // parâmetro correto para link sticker
+    });
+    if (caption) containerParams.set('caption', caption);
+
+    const containerRes  = await fetch(`https://graph.facebook.com/v21.0/${igUserId}/media`, { method: 'POST', body: containerParams });
+    const containerJson = await containerRes.json() as any;
+    if (containerJson.error) throw new Error(containerJson.error.message);
+
+    // Passo 2: aguarda FINISHED
+    const creationId = containerJson.id;
+    let statusCode = 'IN_PROGRESS';
+    for (let i = 0; i < 12; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const s = await fetch(`https://graph.facebook.com/v21.0/${creationId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`);
+      const sj = await s.json() as any;
+      statusCode = sj.status_code ?? 'ERROR';
+      if (statusCode === 'FINISHED') break;
+      if (statusCode === 'ERROR' || statusCode === 'EXPIRED') throw new Error(`Container ${statusCode}`);
+    }
+    if (statusCode !== 'FINISHED') throw new Error('Timeout: Instagram ainda processando a imagem');
+
+    // Passo 3: publica
+    const publishParams = new URLSearchParams({ creation_id: creationId, access_token: accessToken });
+    const publishRes  = await fetch(`https://graph.facebook.com/v21.0/${igUserId}/media_publish`, { method: 'POST', body: publishParams });
+    const publishJson = await publishRes.json() as any;
+    if (publishJson.error) throw new Error(publishJson.error.message);
+    return publishJson.id as string;
+  };
+
+  // Worker: publica itens da fila cujo horário chegou
+  const processInstagramQueue = async () => {
+    const { rows } = await pool.query(
+      "SELECT * FROM instagram_queue WHERE status = 'pending' AND scheduled_at <= $1 LIMIT 5",
+      [Date.now()]
+    );
+    for (const item of rows) {
+      await pool.query("UPDATE instagram_queue SET status = 'processing' WHERE id = $1", [item.id]);
+      try {
+        const { accessToken, igUserId, baseUrl } = await getInstagramSettings();
+        if (!accessToken || !igUserId) throw new Error('Instagram não configurado');
+        const postId = await publishContainerNow(item.image_url, item.link_url, item.caption, accessToken, igUserId, baseUrl);
+        await pool.query("UPDATE instagram_queue SET status = 'published', ig_post_id = $1 WHERE id = $2", [postId, item.id]);
+        console.log(`[IG Queue] Publicado: ${postId}`);
+      } catch (e: any) {
+        await pool.query("UPDATE instagram_queue SET status = 'failed', error = $1 WHERE id = $2", [e.message, item.id]);
+        console.error(`[IG Queue] Falha no item ${item.id}:`, e.message);
+      }
+    }
+  };
+
   // ── Instagram Graph API ───────────────────────────────────────────
   app.get('/api/instagram/config', async (_req, res) => {
     const { accessToken, igUserId } = await getInstagramSettings();
     res.json({ configured: !!(accessToken && igUserId) });
   });
 
-  app.post('/api/instagram/publish-story', async (req, res) => {
-    const { imageUrl, linkUrl, linkStickerX, linkStickerY, caption } = req.body;
-    const { accessToken, igUserId, baseUrl } = await getInstagramSettings();
-
-    if (!accessToken || !igUserId) {
-      res.status(400).json({ error: 'Instagram não configurado. Preencha INSTAGRAM_ACCESS_TOKEN e INSTAGRAM_USER_ID no .env' });
+  // Enfileira um story para publicação no horário agendado
+  app.post('/api/instagram/queue-story', async (req, res) => {
+    const { imageUrl, linkUrl, linkStickerX, linkStickerY, caption, scheduledAt } = req.body;
+    if (!imageUrl || !linkUrl || !scheduledAt) {
+      res.status(400).json({ error: 'imageUrl, linkUrl e scheduledAt são obrigatórios' });
       return;
     }
+    const { rows } = await pool.query(
+      'INSERT INTO instagram_queue (image_url, link_url, link_sticker_x, link_sticker_y, caption, scheduled_at) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+      [imageUrl, linkUrl, linkStickerX ?? 0.5, linkStickerY ?? 0.85, caption || null, scheduledAt]
+    );
+    res.json({ queueId: rows[0].id });
+  });
 
-    // Garante URL pública para o Instagram acessar a imagem
-    const fullImageUrl = (imageUrl as string).startsWith('/') ? `${baseUrl}${imageUrl}` : imageUrl;
-
+  // Publicação imediata (sem fila)
+  app.post('/api/instagram/publish-story', async (req, res) => {
+    const { imageUrl, linkUrl, caption } = req.body;
+    const { accessToken, igUserId, baseUrl } = await getInstagramSettings();
+    if (!accessToken || !igUserId) {
+      res.status(400).json({ error: 'Instagram não configurado' });
+      return;
+    }
     try {
-      // Passo 1: cria container de mídia
-      const containerParams = new URLSearchParams({
-        image_url:    fullImageUrl,
-        media_type:   'STORIES',
-        access_token: accessToken,
-        link_sticker: JSON.stringify({
-          link_sticker_url: linkUrl,
-          x: String(linkStickerX ?? 0.5),
-          y: String(linkStickerY ?? 0.85),
-        }),
-      });
-      if (caption) containerParams.set('caption', caption);
-
-      const containerRes = await fetch(
-        `https://graph.facebook.com/v21.0/${igUserId}/media`,
-        { method: 'POST', body: containerParams },
-      );
-      const containerJson = await containerRes.json() as any;
-      if (!containerRes.ok || containerJson.error) {
-        res.status(500).json({ error: containerJson.error?.message || 'Falha ao criar container no Instagram' });
-        return;
-      }
-
-      // Passo 2: aguarda container ficar FINISHED (processamento assíncrono do Instagram)
-      const creationId = containerJson.id;
-      const MAX_TRIES = 12;
-      const INTERVAL_MS = 3000;
-      let statusCode = 'IN_PROGRESS';
-
-      for (let i = 0; i < MAX_TRIES; i++) {
-        await new Promise(r => setTimeout(r, INTERVAL_MS));
-        const statusRes  = await fetch(
-          `https://graph.facebook.com/v21.0/${creationId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`
-        );
-        const statusJson = await statusRes.json() as any;
-        statusCode = statusJson.status_code ?? 'ERROR';
-        if (statusCode === 'FINISHED') break;
-        if (statusCode === 'ERROR' || statusCode === 'EXPIRED') {
-          res.status(500).json({ error: `Container com erro: ${statusCode}` });
-          return;
-        }
-      }
-
-      if (statusCode !== 'FINISHED') {
-        res.status(500).json({ error: 'Timeout: Instagram ainda está processando a imagem. Tente novamente.' });
-        return;
-      }
-
-      // Passo 3: publica o container
-      const publishParams = new URLSearchParams({
-        creation_id:  creationId,
-        access_token: accessToken,
-      });
-      const publishRes  = await fetch(
-        `https://graph.facebook.com/v21.0/${igUserId}/media_publish`,
-        { method: 'POST', body: publishParams },
-      );
-      const publishJson = await publishRes.json() as any;
-      if (!publishRes.ok || publishJson.error) {
-        res.status(500).json({ error: publishJson.error?.message || 'Falha ao publicar no Instagram' });
-        return;
-      }
-
-      res.json({ success: true, postId: publishJson.id });
+      const postId = await publishContainerNow(imageUrl, linkUrl, caption || null, accessToken, igUserId, baseUrl);
+      res.json({ success: true, postId });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
+  });
+
+  app.get('/api/instagram/queue', async (_req, res) => {
+    const { rows } = await pool.query('SELECT * FROM instagram_queue ORDER BY scheduled_at ASC');
+    res.json(rows);
+  });
+
+  app.delete('/api/instagram/queue/:id', async (req, res) => {
+    await pool.query("UPDATE instagram_queue SET status = 'cancelled' WHERE id = $1 AND status = 'pending'", [req.params.id]);
+    res.json({ success: true });
   });
 
   // ── Vite / Static ──────────────────────────────────────────────────
@@ -432,6 +466,9 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Marketing Studio running on http://localhost:${PORT}`);
+    // Inicia worker da fila do Instagram (verifica a cada 30s)
+    setInterval(processInstagramQueue, 30_000);
+    processInstagramQueue(); // roda imediatamente ao iniciar
   });
 }
 

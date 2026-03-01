@@ -130,6 +130,24 @@ export const getInstagramConfig = async (): Promise<{ configured: boolean }> => 
   return res.json();
 };
 
+export const queueInstagramStory = async (payload: {
+  imageUrl: string;
+  linkUrl: string;
+  linkStickerX: number;
+  linkStickerY: number;
+  caption?: string;
+  scheduledAt: number; // Unix ms
+}): Promise<{ queueId: number }> => {
+  const res = await fetch('/api/instagram/queue-story', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Erro ao agendar story');
+  return data;
+};
+
 export const publishInstagramStory = async (payload: {
   imageUrl: string;
   linkUrl: string;
@@ -143,7 +161,7 @@ export const publishInstagramStory = async (payload: {
     body: JSON.stringify(payload),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Erro ao publicar no Instagram');
+  if (!res.ok) throw new Error(data.error || 'Erro ao publicar');
   return data;
 };
 

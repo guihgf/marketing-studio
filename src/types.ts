@@ -70,6 +70,7 @@ export interface ScheduledItem {
   cta: string;
   ctaCommercial?: string;
   instagramPostId?: string;
+  instagramQueueId?: number;
 }
 
 export interface GenerationResult {
