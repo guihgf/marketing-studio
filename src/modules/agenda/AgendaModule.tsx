@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Collection, ScheduleConfig } from '../../types';
-import { getCollections, getScheduleSlots, createCollection, updateCollection, deleteCollection, addArtToCollection, updateArt, deleteArt, createScheduleSlot, deleteScheduleSlot, uploadImages } from '../../api';
+import { getCollections, getScheduleSlots, createCollection, updateCollection, deleteCollection, addArtToCollection, updateArt, deleteArt, createScheduleSlot, updateScheduleSlot, deleteScheduleSlot, uploadImages } from '../../api';
 import CollectionManager from './CollectionManager';
 import ScheduleConfigView from './ScheduleConfig';
 import ScheduleView from './ScheduleView';
@@ -99,8 +99,11 @@ export default function AgendaModule() {
 
   const syncSlots = async (prev: ScheduleConfig['slots'], next: ScheduleConfig['slots']) => {
     for (const slot of next) {
-      if (!prev.find(s => s.id === slot.id)) {
+      const existed = prev.find(s => s.id === slot.id);
+      if (!existed) {
         await createScheduleSlot({ ...slot, sortOrder: next.indexOf(slot) });
+      } else if (existed.isPrime !== slot.isPrime || existed.time !== slot.time) {
+        await updateScheduleSlot(slot.id, { time: slot.time, isPrime: slot.isPrime });
       }
     }
     for (const slot of prev) {

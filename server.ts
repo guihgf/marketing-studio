@@ -280,6 +280,15 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  app.put('/api/schedule-slots/:id', async (req, res) => {
+    const { time, isPrime } = req.body;
+    await pool.query(
+      'UPDATE schedule_slots SET time = $1, is_prime = $2 WHERE id = $3',
+      [time, isPrime ?? false, req.params.id]
+    );
+    res.json({ success: true });
+  });
+
   app.delete('/api/schedule-slots/:id', async (req, res) => {
     await pool.query('DELETE FROM schedule_slots WHERE id = $1', [req.params.id]);
     res.json({ success: true });
@@ -362,6 +371,7 @@ async function startServer() {
 
     const containerRes  = await fetch(`https://graph.facebook.com/v21.0/${igUserId}/media`, { method: 'POST', body: containerParams });
     const containerJson = await containerRes.json() as any;
+    console.log('[IG] Container response:', JSON.stringify(containerJson));
     if (containerJson.error) throw new Error(containerJson.error.message);
 
     // Passo 2: aguarda FINISHED
@@ -369,11 +379,12 @@ async function startServer() {
     let statusCode = 'IN_PROGRESS';
     for (let i = 0; i < 12; i++) {
       await new Promise(r => setTimeout(r, 3000));
-      const s = await fetch(`https://graph.facebook.com/v21.0/${creationId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`);
+      const s = await fetch(`https://graph.facebook.com/v21.0/${creationId}?fields=status_code,status&access_token=${encodeURIComponent(accessToken)}`);
       const sj = await s.json() as any;
+      console.log(`[IG] Container status (try ${i + 1}):`, JSON.stringify(sj));
       statusCode = sj.status_code ?? 'ERROR';
       if (statusCode === 'FINISHED') break;
-      if (statusCode === 'ERROR' || statusCode === 'EXPIRED') throw new Error(`Container ${statusCode}`);
+      if (statusCode === 'ERROR' || statusCode === 'EXPIRED') throw new Error(`Container ${statusCode}: ${sj.status || ''}`);
     }
     if (statusCode !== 'FINISHED') throw new Error('Timeout: Instagram ainda processando a imagem');
 

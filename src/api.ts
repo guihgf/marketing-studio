@@ -120,6 +120,14 @@ export const createScheduleSlot = async (slot: TimeSlot & { sortOrder?: number }
   });
 };
 
+export const updateScheduleSlot = async (id: string, data: { time?: string; isPrime?: boolean }): Promise<void> => {
+  await fetch(`/api/schedule-slots/${id}`, {
+    method: 'PUT',
+    headers: jsonHeaders(),
+    body: JSON.stringify(data),
+  });
+};
+
 export const deleteScheduleSlot = async (id: string): Promise<void> => {
   await fetch(`/api/schedule-slots/${id}`, { method: 'DELETE', headers: authHeaders() });
 };
