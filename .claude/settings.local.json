@@ -4,7 +4,8 @@
       "Bash(npm install bcryptjs jsonwebtoken)",
       "Bash(npm install --save-dev @types/bcryptjs @types/jsonwebtoken)",
       "Bash(npm install dotenv)",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(npx tsc --noEmit)"
     ]
   }
 }

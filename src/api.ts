@@ -124,6 +124,29 @@ export const deleteScheduleSlot = async (id: string): Promise<void> => {
   await fetch(`/api/schedule-slots/${id}`, { method: 'DELETE', headers: authHeaders() });
 };
 
+// ── Instagram ──────────────────────────────────────────────────────────
+export const getInstagramConfig = async (): Promise<{ configured: boolean }> => {
+  const res = await fetch('/api/instagram/config', { headers: authHeaders() });
+  return res.json();
+};
+
+export const publishInstagramStory = async (payload: {
+  imageUrl: string;
+  linkUrl: string;
+  linkStickerX: number;
+  linkStickerY: number;
+  caption?: string;
+}): Promise<{ postId: string }> => {
+  const res = await fetch('/api/instagram/publish-story', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Erro ao publicar no Instagram');
+  return data;
+};
+
 // ── Image Upload ───────────────────────────────────────────────────────
 export const uploadFromUrl = async (url: string): Promise<string> => {
   const res = await fetch('/api/upload-url', {

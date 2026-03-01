@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { Collection, ScheduleConfig, GenerationResult, ScheduledItem } from '../../types';
 import { generateSchedule, COMMERCIAL_CTAS } from '../../../services/scheduler';
-import { RefreshCw, CheckCircle, AlertTriangle, Wand2, Loader2, Download, Copy, Calendar, ChevronDown, ChevronRight, Link as LinkIcon, Sparkles, ShoppingBag, Lightbulb } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertTriangle, Wand2, Loader2, Download, Copy, Calendar, ChevronDown, ChevronRight, Link as LinkIcon, Sparkles, ShoppingBag, Lightbulb, Instagram } from 'lucide-react';
+import InstagramPublishModal from './InstagramPublishModal';
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 
@@ -52,6 +53,7 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
   const [loadingItems, setLoadingItems] = useState<Set<string>>(new Set());
   const [collapsedDays, setCollapsedDays] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [publishModal, setPublishModal] = useState<{ item: ScheduledItem; dayIndex: number } | null>(null);
 
   const toggleDay = (date: string) => setCollapsedDays(prev => ({ ...prev, [date]: !prev[date] }));
 
@@ -156,6 +158,17 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
     } catch { window.open(url, '_blank'); }
   };
 
+  const handlePublished = (dayIndex: number, slotId: string, postId: string) => {
+    setResults(prev => {
+      if (!prev) return null;
+      const nr = [...prev];
+      const idx = nr[dayIndex].items.findIndex(i => i.slotId === slotId);
+      if (idx !== -1) nr[dayIndex].items[idx] = { ...nr[dayIndex].items[idx], instagramPostId: postId };
+      return nr;
+    });
+    setPublishModal(null);
+  };
+
   const isGenerating = loadingItems.size > 0 && results !== null;
 
   return (
@@ -221,17 +234,33 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
                       const uid = `${dayIndex}-${item.slotId}`;
                       const loading = loadingItems.has(uid);
                       return (
-                        <div key={item.slotId} className={`relative flex flex-col sm:flex-row bg-slate-900/40 rounded-lg overflow-hidden border ${item.isPrime ? 'border-purple-500/50' : 'border-slate-700/50'}`}>
+                        <div key={item.slotId} className={`relative flex flex-col sm:flex-row bg-slate-900/40 rounded-lg overflow-hidden border ${item.instagramPostId ? 'border-pink-500/60' : item.isPrime ? 'border-purple-500/50' : 'border-slate-700/50'}`}>
                           <div className={`sm:w-24 flex flex-row sm:flex-col justify-between sm:justify-center items-center p-3 ${item.isPrime ? 'bg-purple-900/20 text-purple-300' : 'bg-slate-800 text-slate-400'}`}>
                             <span className="text-xl font-mono font-bold">{item.slotTime}</span>
                             <span className="text-[10px] uppercase font-bold tracking-wider">{item.isPrime ? 'NOBRE' : 'COMUM'}</span>
                           </div>
                           <div className="flex-1 p-3 flex flex-row gap-4 items-start">
-                            <div className="group relative h-40 w-24 shrink-0 rounded bg-black border border-slate-700 overflow-hidden cursor-pointer" onClick={() => downloadImage(item.art.imageUrl, item.art.description)}>
-                              <img src={item.art.imageUrl} alt="Arte" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2">
-                                <Download className="text-white" size={24} />
+                            <div className="flex flex-col gap-2 shrink-0">
+                              <div className="group relative h-40 w-24 rounded bg-black border border-slate-700 overflow-hidden cursor-pointer" onClick={() => downloadImage(item.art.imageUrl, item.art.description)}>
+                                <img src={item.art.imageUrl} alt="Arte" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2">
+                                  <Download className="text-white" size={24} />
+                                </div>
                               </div>
+                              {item.instagramPostId ? (
+                                <div className="flex items-center justify-center gap-1 bg-pink-900/30 border border-pink-500/40 rounded px-2 py-1">
+                                  <CheckCircle size={11} className="text-pink-400 shrink-0" />
+                                  <span className="text-[9px] font-bold text-pink-300 uppercase">Publicado</span>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setPublishModal({ item, dayIndex })}
+                                  className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-pink-600/80 to-purple-600/80 hover:from-pink-500 hover:to-purple-500 border border-pink-500/40 rounded px-2 py-1.5 text-white transition-all"
+                                >
+                                  <Instagram size={12} />
+                                  <span className="text-[10px] font-bold">Publicar</span>
+                                </button>
+                              )}
                             </div>
                             <div className="flex-1 min-w-0 space-y-3">
                               <div>
@@ -333,6 +362,14 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
           <h3 className="text-lg font-medium text-slate-300">Nenhuma coleção cadastrada</h3>
           <p className="text-slate-500 mt-1">Adicione coleções na aba "Coleções" antes de gerar.</p>
         </div>
+      )}
+
+      {publishModal && (
+        <InstagramPublishModal
+          item={publishModal.item}
+          onClose={() => setPublishModal(null)}
+          onPublished={(postId) => handlePublished(publishModal.dayIndex, publishModal.item.slotId, postId)}
+        />
       )}
     </div>
   );

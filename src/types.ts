@@ -69,6 +69,7 @@ export interface ScheduledItem {
   generatedCaption?: string;
   cta: string;
   ctaCommercial?: string;
+  instagramPostId?: string;
 }
 
 export interface GenerationResult {

@@ -317,6 +317,82 @@ async function startServer() {
     res.json({ urls });
   });
 
+  // Helper: lê configurações Instagram do banco
+  const getInstagramSettings = async () => {
+    const { rows } = await pool.query(
+      "SELECT key, value FROM settings WHERE key = ANY(ARRAY['instagram_access_token','instagram_user_id','instagram_base_url'])"
+    );
+    const map = Object.fromEntries(rows.map((r: { key: string; value: string }) => [r.key, r.value]));
+    return {
+      accessToken: map['instagram_access_token'] || '',
+      igUserId:    map['instagram_user_id'] || '',
+      baseUrl:     map['instagram_base_url'] || `http://localhost:${PORT}`,
+    };
+  };
+
+  // ── Instagram Graph API ───────────────────────────────────────────
+  app.get('/api/instagram/config', async (_req, res) => {
+    const { accessToken, igUserId } = await getInstagramSettings();
+    res.json({ configured: !!(accessToken && igUserId) });
+  });
+
+  app.post('/api/instagram/publish-story', async (req, res) => {
+    const { imageUrl, linkUrl, linkStickerX, linkStickerY, caption } = req.body;
+    const { accessToken, igUserId, baseUrl } = await getInstagramSettings();
+
+    if (!accessToken || !igUserId) {
+      res.status(400).json({ error: 'Instagram não configurado. Preencha INSTAGRAM_ACCESS_TOKEN e INSTAGRAM_USER_ID no .env' });
+      return;
+    }
+
+    // Garante URL pública para o Instagram acessar a imagem
+    const fullImageUrl = (imageUrl as string).startsWith('/') ? `${baseUrl}${imageUrl}` : imageUrl;
+
+    try {
+      // Passo 1: cria container de mídia
+      const containerParams = new URLSearchParams({
+        image_url:    fullImageUrl,
+        media_type:   'STORIES',
+        access_token: accessToken,
+        link_sticker: JSON.stringify({
+          link_sticker_url: linkUrl,
+          x: String(linkStickerX ?? 0.5),
+          y: String(linkStickerY ?? 0.85),
+        }),
+      });
+      if (caption) containerParams.set('caption', caption);
+
+      const containerRes = await fetch(
+        `https://graph.facebook.com/v21.0/${igUserId}/media`,
+        { method: 'POST', body: containerParams },
+      );
+      const containerJson = await containerRes.json() as any;
+      if (!containerRes.ok || containerJson.error) {
+        res.status(500).json({ error: containerJson.error?.message || 'Falha ao criar container no Instagram' });
+        return;
+      }
+
+      // Passo 2: publica o container
+      const publishParams = new URLSearchParams({
+        creation_id:  containerJson.id,
+        access_token: accessToken,
+      });
+      const publishRes  = await fetch(
+        `https://graph.facebook.com/v21.0/${igUserId}/media_publish`,
+        { method: 'POST', body: publishParams },
+      );
+      const publishJson = await publishRes.json() as any;
+      if (!publishRes.ok || publishJson.error) {
+        res.status(500).json({ error: publishJson.error?.message || 'Falha ao publicar no Instagram' });
+        return;
+      }
+
+      res.json({ success: true, postId: publishJson.id });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Vite / Static ──────────────────────────────────────────────────
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
