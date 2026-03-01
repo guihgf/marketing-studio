@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import type { Collection, ScheduleConfig, GenerationResult, ScheduledItem } from '../../types';
 import { generateSchedule, COMMERCIAL_CTAS } from '../../../services/scheduler';
-import { RefreshCw, CheckCircle, AlertTriangle, Wand2, Loader2, Download, Copy, Calendar, ChevronDown, ChevronRight, Link as LinkIcon, Sparkles, ShoppingBag, Lightbulb, Instagram } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertTriangle, Wand2, Loader2, Download, Copy, Calendar, ChevronDown, ChevronRight, Link as LinkIcon, ShoppingBag, Lightbulb, Instagram } from 'lucide-react';
 import InstagramPublishModal from './InstagramPublishModal';
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 
-const generateCaption = async (description: string, collectionName: string, collectionLink: string, isPrime: boolean): Promise<{ caption: string; cta: string }> => {
+const generateCaption = async (description: string, collectionName: string, _collectionLink: string, isPrime: boolean): Promise<{ cta: string }> => {
   const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -18,19 +18,17 @@ const generateCaption = async (description: string, collectionName: string, coll
       messages: [{
         role: 'user',
         content: `Você é especialista em marketing de moda geek/gamer.
-Coleção: "${collectionName}" | Arte: "${description}" | Link: ${collectionLink}
+Coleção: "${collectionName}" | Arte: "${description}"
 ${isPrime ? 'HORÁRIO NOBRE - use urgência máxima!' : ''}
 
-Crie:
-1. Uma legenda para Instagram (máx 150 chars) em PT-BR, informal, com emojis e hashtags relevantes.
-2. Um CTA criativo curto (máx 5 palavras) em MAIÚSCULAS.
+Crie um CTA criativo curto (máx 5 palavras) em MAIÚSCULAS para um story do Instagram.
 
-Return JSON: { "caption": "...", "cta": "..." }`
+Return JSON: { "cta": "..." }`
       }],
       response_format: { type: 'json_object' },
     }),
   });
-  if (!res.ok) throw new Error(`Caption error: ${res.status}`);
+  if (!res.ok) throw new Error(`CTA error: ${res.status}`);
   const data = await res.json();
   return JSON.parse(data.choices[0].message.content);
 };
@@ -83,7 +81,7 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
             if (!prev) return null;
             const nr = [...prev];
             const idx = nr[task.dayIndex].items.findIndex(it => it.slotId === task.slotId);
-            if (idx !== -1) nr[task.dayIndex].items[idx] = { ...nr[task.dayIndex].items[idx], generatedCaption: content.caption, cta: content.cta };
+            if (idx !== -1) nr[task.dayIndex].items[idx] = { ...nr[task.dayIndex].items[idx], cta: content.cta };
             return nr;
           });
         } catch (e) { console.error('Caption failed', uid, e); }
@@ -109,21 +107,6 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
     }));
     alert('Programação confirmada! Histórico de uso atualizado.');
     setResults(null);
-  };
-
-  const handleSingleRegenerate = async (dayIndex: number, item: ScheduledItem) => {
-    const uid = `${dayIndex}-${item.slotId}`;
-    setLoadingItems(prev => new Set(prev).add(uid));
-    try {
-      const content = await generateCaption(item.art.description, item.collectionName, item.collectionLink, item.isPrime);
-      setResults(prev => {
-        if (!prev) return null;
-        const nr = [...prev];
-        const idx = nr[dayIndex].items.findIndex(i => i.slotId === item.slotId);
-        if (idx !== -1) nr[dayIndex].items[idx] = { ...nr[dayIndex].items[idx], generatedCaption: content.caption, cta: content.cta };
-        return nr;
-      });
-    } finally { setLoadingItems(prev => { const s = new Set(prev); s.delete(uid); return s; }); }
   };
 
   const handleRegenerateCommercialCTA = (dayIndex: number, slotId: string) => {
@@ -270,7 +253,11 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
                                 </div>
                               ) : (
                                 <button
-                                  onClick={() => setPublishModal({ item, dayIndex, date: dayResult.date })}
+                                  onClick={() => {
+                                    const d = new Date(startDate + 'T00:00:00');
+                                    d.setDate(d.getDate() + dayIndex);
+                                    setPublishModal({ item, dayIndex, date: d.toISOString().split('T')[0] });
+                                  }}
                                   className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-pink-600/80 to-purple-600/80 hover:from-pink-500 hover:to-purple-500 border border-pink-500/40 rounded px-2 py-1.5 text-white transition-all"
                                 >
                                   <Instagram size={12} />
@@ -325,33 +312,6 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
                                   </button>
                                 </div>
 
-                                {/* Caption IA */}
-                                <div className="pt-2 border-t border-slate-800/50">
-                                  {loading ? (
-                                    <div className="flex items-center justify-center gap-2 py-4 bg-slate-950/50 border border-dashed border-slate-800 rounded text-xs text-blue-300/70">
-                                      <Loader2 size={16} className="animate-spin text-blue-500" />
-                                      <span className="animate-pulse">Criando legenda...</span>
-                                    </div>
-                                  ) : !item.generatedCaption ? (
-                                    <button onClick={() => handleSingleRegenerate(dayIndex, item)} className="text-xs flex items-center gap-1.5 bg-gradient-to-r from-blue-600/20 to-purple-600/20 hover:from-blue-600/30 hover:to-purple-600/30 border border-blue-500/30 text-blue-300 px-3 py-1.5 rounded w-full justify-center">
-                                      <Sparkles size={14} /> Tentar IA Novamente
-                                    </button>
-                                  ) : (
-                                    <div className="space-y-2">
-                                      <div onClick={() => copy(item.generatedCaption || '', `cap-${uid}`)} className="bg-slate-950 border border-slate-800 p-3 rounded cursor-pointer hover:border-slate-600 group relative">
-                                        <div className="absolute top-2 right-2 text-slate-500 group-hover:text-white">
-                                          {copiedId === `cap-${uid}` ? <CheckCircle size={14} className="text-green-500" /> : <Copy size={14} />}
-                                        </div>
-                                        <p className="text-xs text-slate-300 italic pr-6 leading-relaxed">"{item.generatedCaption}"</p>
-                                      </div>
-                                      <div className="flex justify-end">
-                                        <button onClick={() => handleSingleRegenerate(dayIndex, item)} className="text-[10px] text-slate-500 hover:text-blue-400 flex items-center gap-1">
-                                          <RefreshCw size={10} /> Regenerar IA
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
                               </div>
                             </div>
                           </div>
