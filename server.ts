@@ -372,9 +372,34 @@ async function startServer() {
         return;
       }
 
-      // Passo 2: publica o container
+      // Passo 2: aguarda container ficar FINISHED (processamento assíncrono do Instagram)
+      const creationId = containerJson.id;
+      const MAX_TRIES = 12;
+      const INTERVAL_MS = 3000;
+      let statusCode = 'IN_PROGRESS';
+
+      for (let i = 0; i < MAX_TRIES; i++) {
+        await new Promise(r => setTimeout(r, INTERVAL_MS));
+        const statusRes  = await fetch(
+          `https://graph.facebook.com/v21.0/${creationId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`
+        );
+        const statusJson = await statusRes.json() as any;
+        statusCode = statusJson.status_code ?? 'ERROR';
+        if (statusCode === 'FINISHED') break;
+        if (statusCode === 'ERROR' || statusCode === 'EXPIRED') {
+          res.status(500).json({ error: `Container com erro: ${statusCode}` });
+          return;
+        }
+      }
+
+      if (statusCode !== 'FINISHED') {
+        res.status(500).json({ error: 'Timeout: Instagram ainda está processando a imagem. Tente novamente.' });
+        return;
+      }
+
+      // Passo 3: publica o container
       const publishParams = new URLSearchParams({
-        creation_id:  containerJson.id,
+        creation_id:  creationId,
         access_token: accessToken,
       });
       const publishRes  = await fetch(
