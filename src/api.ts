@@ -148,6 +148,13 @@ export const queueInstagramStory = async (payload: {
   return data;
 };
 
+export const refreshInstagramToken = async (): Promise<{ expiresInDays: number; newToken: string }> => {
+  const res = await fetch('/api/instagram/refresh-token', { method: 'POST', headers: authHeaders() });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Erro ao renovar token');
+  return data;
+};
+
 export const publishInstagramStory = async (payload: {
   imageUrl: string;
   linkUrl: string;

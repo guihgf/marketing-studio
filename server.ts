@@ -452,6 +452,38 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // Troca token curto por token de longa duração (60 dias)
+  app.post('/api/instagram/refresh-token', async (_req, res) => {
+    const { rows } = await pool.query(
+      "SELECT key, value FROM settings WHERE key = ANY(ARRAY['instagram_access_token','facebook_app_id','facebook_app_secret'])"
+    );
+    const map = Object.fromEntries(rows.map((r: any) => [r.key, r.value]));
+    const currentToken = map['instagram_access_token'];
+    const appId        = map['facebook_app_id'];
+    const appSecret    = map['facebook_app_secret'];
+
+    if (!currentToken || !appId || !appSecret) {
+      res.status(400).json({ error: 'Preencha o token atual, App ID e App Secret antes de renovar.' });
+      return;
+    }
+
+    try {
+      const url = `https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id=${encodeURIComponent(appId)}&client_secret=${encodeURIComponent(appSecret)}&fb_exchange_token=${encodeURIComponent(currentToken)}`;
+      const r    = await fetch(url);
+      const data = await r.json() as any;
+      if (data.error) throw new Error(data.error.message);
+
+      await pool.query(
+        "INSERT INTO settings (key, value) VALUES ('instagram_access_token', $1) ON CONFLICT (key) DO UPDATE SET value = $1",
+        [data.access_token]
+      );
+      const expiresInDays = Math.floor((data.expires_in || 0) / 86400);
+      res.json({ success: true, newToken: data.access_token, expiresInDays });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Vite / Static ──────────────────────────────────────────────────
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
