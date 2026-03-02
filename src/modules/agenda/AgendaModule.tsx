@@ -68,8 +68,8 @@ export default function AgendaModule() {
           } else {
             // Check if art changed
             const prevArt = existed.arts.find(a => a.id === art.id)!;
-            if (prevArt.description !== art.description || prevArt.lastUsed !== art.lastUsed) {
-              await updateArt(art.id, { description: art.description, lastUsed: art.lastUsed });
+            if (prevArt.description !== art.description || prevArt.lastUsed !== art.lastUsed || prevArt.enabled !== art.enabled) {
+              await updateArt(art.id, { description: art.description, lastUsed: art.lastUsed, enabled: art.enabled });
             }
           }
         }

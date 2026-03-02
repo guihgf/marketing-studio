@@ -38,6 +38,7 @@ export interface Art {
   imageUrl: string;
   description: string;
   lastUsed: number | null;
+  enabled?: boolean;
 }
 
 export interface Collection {

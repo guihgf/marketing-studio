@@ -66,7 +66,8 @@ async function initDB() {
       collection_id TEXT REFERENCES collections(id) ON DELETE CASCADE,
       image_url TEXT NOT NULL,
       description TEXT,
-      last_used BIGINT
+      last_used BIGINT,
+      enabled BOOLEAN DEFAULT TRUE
     );
 
     CREATE TABLE IF NOT EXISTS schedule_slots (
@@ -90,6 +91,9 @@ async function initDB() {
       created_at TIMESTAMP DEFAULT NOW()
     );
   `);
+
+  // Migrations for existing DBs
+  await pool.query(`ALTER TABLE arts ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT TRUE`);
 
   // Seed default user if none exists
   const { rows } = await pool.query('SELECT id FROM users LIMIT 1');
@@ -208,6 +212,7 @@ async function startServer() {
         imageUrl: a.image_url,
         description: a.description,
         lastUsed: a.last_used ? Number(a.last_used) : null,
+        enabled: a.enabled !== false,
       })),
     }));
     res.json(result);
@@ -247,10 +252,10 @@ async function startServer() {
   });
 
   app.put('/api/arts/:id', async (req, res) => {
-    const { description, lastUsed } = req.body;
+    const { description, lastUsed, enabled } = req.body;
     await pool.query(
-      'UPDATE arts SET description=$1, last_used=$2 WHERE id=$3',
-      [description, lastUsed ?? null, req.params.id]
+      'UPDATE arts SET description=$1, last_used=$2, enabled=$3 WHERE id=$4',
+      [description, lastUsed ?? null, enabled !== false, req.params.id]
     );
     res.json({ success: true });
   });

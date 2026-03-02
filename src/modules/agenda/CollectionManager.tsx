@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import type { Collection, Art, Priority } from '../../types';
-import { Trash2, Plus, Image as ImageIcon, ExternalLink, Star, Upload, Loader2 } from 'lucide-react';
+import { Trash2, Plus, Image as ImageIcon, ExternalLink, Star, Upload, Loader2, EyeOff, Eye, ChevronUp, ChevronDown as ChevronDownIcon } from 'lucide-react';
 
 const generateId = () => Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 
@@ -81,6 +81,26 @@ export default function CollectionManager({ collections, setCollections, onUploa
   const updateArtDesc = (collectionId: string, artId: string, desc: string) =>
     setCollections(prev => prev.map(c => c.id === collectionId ? { ...c, arts: c.arts.map(a => a.id === artId ? { ...a, description: desc } : a) } : c));
 
+  const toggleArt = (collectionId: string, artId: string) =>
+    setCollections(prev => prev.map(c => c.id === collectionId ? { ...c, arts: c.arts.map(a => a.id === artId ? { ...a, enabled: a.enabled === false ? true : false } : a) } : c));
+
+  const PRIORITY_CYCLE: Priority[] = ['LOW', 'MEDIUM', 'HIGH'];
+  const cyclePriority = (id: string, current: Priority) => {
+    const next = PRIORITY_CYCLE[(PRIORITY_CYCLE.indexOf(current) + 1) % PRIORITY_CYCLE.length];
+    setCollections(prev => prev.map(c => c.id === id ? { ...c, priority: next } : c));
+  };
+
+  const moveCollection = (id: string, dir: -1 | 1) => {
+    setCollections(prev => {
+      const idx = prev.findIndex(c => c.id === id);
+      const next = idx + dir;
+      if (next < 0 || next >= prev.length) return prev;
+      const arr = [...prev];
+      [arr[idx], arr[next]] = [arr[next], arr[idx]];
+      return arr;
+    });
+  };
+
   const priorityColors: Record<Priority, string> = {
     HIGH: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
     MEDIUM: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
@@ -123,10 +143,21 @@ export default function CollectionManager({ collections, setCollections, onUploa
           </div>
         )}
 
-        {collections.map(col => (
+        {collections.map((col, colIdx) => (
           <div key={col.id} className={`bg-slate-800 rounded-xl border overflow-hidden ${col.priority === 'HIGH' ? 'border-purple-500/50' : 'border-slate-700'}`}>
             <div className="p-4 bg-slate-900/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
+                {/* Reorder buttons */}
+                <div className="flex flex-col gap-0.5">
+                  <button onClick={() => moveCollection(col.id, -1)} disabled={colIdx === 0}
+                    className="text-slate-500 hover:text-white disabled:opacity-20 transition-colors">
+                    <ChevronUp size={14} />
+                  </button>
+                  <button onClick={() => moveCollection(col.id, 1)} disabled={colIdx === collections.length - 1}
+                    className="text-slate-500 hover:text-white disabled:opacity-20 transition-colors">
+                    <ChevronDownIcon size={14} />
+                  </button>
+                </div>
                 <button onClick={() => toggleCollection(col.id)}
                   className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${col.enabled ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]' : 'bg-slate-600'}`}>
                   {col.enabled && <div className="w-2 h-2 bg-white rounded-full" />}
@@ -137,10 +168,12 @@ export default function CollectionManager({ collections, setCollections, onUploa
                     {col.link} <ExternalLink size={12} />
                   </a>
                 </div>
-                <span className={`px-2 py-0.5 rounded border text-[10px] font-bold flex items-center gap-1 ${priorityColors[col.priority]}`}>
+                <button onClick={() => cyclePriority(col.id, col.priority)}
+                  title="Clique para mudar prioridade"
+                  className={`px-2 py-0.5 rounded border text-[10px] font-bold flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity ${priorityColors[col.priority]}`}>
                   {col.priority === 'HIGH' && <Star size={10} fill="currentColor" />}
                   {priorityLabel[col.priority]}
-                </span>
+                </button>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => triggerUpload(col.id)} disabled={isProcessing}
@@ -163,9 +196,16 @@ export default function CollectionManager({ collections, setCollections, onUploa
                 </div>
               ) : (
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-                  {col.arts.map(art => (
-                    <div key={art.id} className="group relative aspect-[9/16] bg-slate-900 rounded-lg overflow-hidden border border-slate-700 hover:border-emerald-500/50 transition-colors">
-                      <img src={art.imageUrl} alt="Art" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                  {col.arts.map(art => {
+                    const artEnabled = art.enabled !== false;
+                    return (
+                    <div key={art.id} className={`group relative aspect-[9/16] bg-slate-900 rounded-lg overflow-hidden border transition-colors ${artEnabled ? 'border-slate-700 hover:border-emerald-500/50' : 'border-slate-700/40'}`}>
+                      <img src={art.imageUrl} alt="Art" className={`w-full h-full object-cover transition-opacity ${artEnabled ? 'opacity-80 group-hover:opacity-100' : 'opacity-25'}`} />
+                      {!artEnabled && (
+                        <div className="absolute inset-0 flex items-center justify-center z-10">
+                          <span className="bg-slate-900/80 text-slate-400 text-[9px] font-bold uppercase px-2 py-1 rounded border border-slate-600">Inativa</span>
+                        </div>
+                      )}
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-80" />
                       <div className="absolute bottom-0 left-0 right-0 p-2 z-10">
                         <input type="text" value={art.description} onChange={e => updateArtDesc(col.id, art.id, e.target.value)}
@@ -174,12 +214,19 @@ export default function CollectionManager({ collections, setCollections, onUploa
                           <p className="text-[9px] text-orange-400 font-medium">{new Date(art.lastUsed).toLocaleDateString('pt-BR')}</p>
                         )}
                       </div>
+                      {/* Toggle ativo/inativo */}
+                      <button onClick={() => toggleArt(col.id, art.id)}
+                        title={artEnabled ? 'Inativar arte' : 'Ativar arte'}
+                        className={`absolute top-1 left-1 p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all z-20 ${artEnabled ? 'bg-slate-700 hover:bg-orange-500/80 text-slate-300' : 'bg-emerald-600/80 hover:bg-emerald-500 text-white'}`}>
+                        {artEnabled ? <EyeOff size={12} /> : <Eye size={12} />}
+                      </button>
                       <button onClick={() => removeArt(col.id, art.id)}
                         className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all z-20">
                         <Trash2 size={12} />
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

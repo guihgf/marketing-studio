@@ -41,6 +41,7 @@ const generateSingleDay = (
   collections.forEach(col => {
     if (!col.enabled) return;
     col.arts.forEach(art => {
+      if (art.enabled === false) return;
       const lastUsed = simulatedUsageMap[art.id] !== undefined ? simulatedUsageMap[art.id] : art.lastUsed;
       if (!lastUsed || targetTime - lastUsed > COOLDOWN) {
         availableArts.push({ ...art, collectionPriority: col.priority, collectionName: col.name, collectionLink: col.link });

@@ -94,7 +94,7 @@ export const addArtToCollection = async (collectionId: string, art: Pick<Art, 'i
   });
 };
 
-export const updateArt = async (id: string, data: { description?: string; lastUsed?: number | null }): Promise<void> => {
+export const updateArt = async (id: string, data: { description?: string; lastUsed?: number | null; enabled?: boolean }): Promise<void> => {
   await fetch(`/api/arts/${id}`, {
     method: 'PUT',
     headers: jsonHeaders(),
