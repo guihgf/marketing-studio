@@ -4,7 +4,9 @@ import { getCollections, getScheduleSlots, createCollection, updateCollection, d
 import CollectionManager from './CollectionManager';
 import ScheduleConfigView from './ScheduleConfig';
 import ScheduleView from './ScheduleView';
-import { CalendarClock, Layers, LayoutDashboard, Loader2 } from 'lucide-react';
+import QueueView from './QueueView';
+import HistoryView from './HistoryView';
+import { CalendarClock, Layers, LayoutDashboard, Loader2, Instagram, History } from 'lucide-react';
 
 const INITIAL_CONFIG: ScheduleConfig = {
   slots: [
@@ -15,7 +17,7 @@ const INITIAL_CONFIG: ScheduleConfig = {
 };
 
 export default function AgendaModule() {
-  const [activeTab, setActiveTab] = useState<'schedule' | 'collections' | 'config'>('schedule');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'collections' | 'config' | 'queue' | 'history'>('schedule');
   const [collections, setCollections] = useState<Collection[]>([]);
   const [config, setConfig] = useState<ScheduleConfig>(INITIAL_CONFIG);
   const [loading, setLoading] = useState(true);
@@ -126,9 +128,11 @@ export default function AgendaModule() {
   }
 
   const tabs = [
-    { id: 'schedule' as const, label: 'Agenda', icon: <CalendarClock size={16} /> },
-    { id: 'collections' as const, label: 'Coleções', icon: <Layers size={16} /> },
-    { id: 'config' as const, label: 'Config', icon: <LayoutDashboard size={16} /> },
+    { id: 'schedule' as const,    label: 'Agenda',       icon: <CalendarClock size={16} /> },
+    { id: 'collections' as const, label: 'Coleções',     icon: <Layers size={16} /> },
+    { id: 'queue' as const,       label: 'Programados',  icon: <Instagram size={16} /> },
+    { id: 'history' as const,     label: 'Histórico',    icon: <History size={16} /> },
+    { id: 'config' as const,      label: 'Config',       icon: <LayoutDashboard size={16} /> },
   ];
 
   return (
@@ -154,6 +158,8 @@ export default function AgendaModule() {
       {activeTab === 'collections' && (
         <CollectionManager collections={collections} setCollections={handleSetCollections} onUploadImages={handleUploadImages} />
       )}
+      {activeTab === 'queue' && <QueueView />}
+      {activeTab === 'history' && <HistoryView />}
       {activeTab === 'config' && (
         <ScheduleConfigView config={config} setConfig={handleSetConfig} />
       )}

@@ -90,6 +90,14 @@ async function initDB() {
       error TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS schedule_history (
+      id SERIAL PRIMARY KEY,
+      confirmed_at TIMESTAMP DEFAULT NOW(),
+      period_start TEXT NOT NULL,
+      period_end TEXT NOT NULL,
+      days JSONB NOT NULL
+    );
   `);
 
   // Migrations for existing DBs
@@ -466,6 +474,21 @@ async function startServer() {
   app.delete('/api/instagram/queue/:id', async (req, res) => {
     await pool.query("UPDATE instagram_queue SET status = 'cancelled' WHERE id = $1 AND status = 'pending'", [req.params.id]);
     res.json({ success: true });
+  });
+
+  // ── Schedule History ───────────────────────────────────────────────────
+  app.post('/api/schedule-history', async (req, res) => {
+    const { periodStart, periodEnd, days } = req.body;
+    const { rows } = await pool.query(
+      'INSERT INTO schedule_history (period_start, period_end, days) VALUES ($1,$2,$3) RETURNING id, confirmed_at',
+      [periodStart, periodEnd, JSON.stringify(days)]
+    );
+    res.json(rows[0]);
+  });
+
+  app.get('/api/schedule-history', async (_req, res) => {
+    const { rows } = await pool.query('SELECT * FROM schedule_history ORDER BY confirmed_at DESC LIMIT 50');
+    res.json(rows);
   });
 
   // Troca token curto por token de longa duração (60 dias)

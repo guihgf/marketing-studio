@@ -180,6 +180,33 @@ export const publishInstagramStory = async (payload: {
   return data;
 };
 
+// ── Schedule History ───────────────────────────────────────────────────
+export const saveScheduleHistory = async (data: {
+  periodStart: string;
+  periodEnd: string;
+  days: Array<{ date: string; items: Array<{ slotTime: string; isPrime: boolean; artDesc: string; artImageUrl: string; collectionName: string }> }>;
+}): Promise<void> => {
+  await fetch('/api/schedule-history', {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify(data),
+  });
+};
+
+export const getScheduleHistory = async (): Promise<any[]> => {
+  const res = await fetch('/api/schedule-history', { headers: authHeaders() });
+  return res.json();
+};
+
+export const getInstagramQueue = async (): Promise<any[]> => {
+  const res = await fetch('/api/instagram/queue', { headers: authHeaders() });
+  return res.json();
+};
+
+export const cancelInstagramQueueItem = async (id: number): Promise<void> => {
+  await fetch(`/api/instagram/queue/${id}`, { method: 'DELETE', headers: authHeaders() });
+};
+
 // ── Image Upload ───────────────────────────────────────────────────────
 export const uploadFromUrl = async (url: string): Promise<string> => {
   const res = await fetch('/api/upload-url', {

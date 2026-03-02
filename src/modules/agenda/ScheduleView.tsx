@@ -3,6 +3,7 @@ import type { Collection, ScheduleConfig, GenerationResult, ScheduledItem } from
 import { generateSchedule, COMMERCIAL_CTAS } from '../../../services/scheduler';
 import { RefreshCw, CheckCircle, AlertTriangle, Wand2, Loader2, Download, Copy, Calendar, ChevronDown, ChevronRight, Link as LinkIcon, ShoppingBag, Lightbulb, Instagram } from 'lucide-react';
 import InstagramPublishModal from './InstagramPublishModal';
+import { saveScheduleHistory } from '../../api';
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 
@@ -21,7 +22,7 @@ const generateCaption = async (description: string, collectionName: string, _col
 Coleção: "${collectionName}" | Arte: "${description}"
 ${isPrime ? 'HORÁRIO NOBRE - use urgência máxima!' : ''}
 
-Crie um CTA criativo curto (máx 5 palavras) em MAIÚSCULAS para um story do Instagram.
+Crie um CTA criativo (máx 25 caracteres, TUDO EM MAIÚSCULAS, sem pontuação no final) para um story do Instagram.
 
 Return JSON: { "cta": "..." }`
       }],
@@ -90,9 +91,27 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
     }
   };
 
-  const confirmSchedule = () => {
+  const confirmSchedule = async () => {
     if (!results) return;
     const startObj = new Date(startDate + 'T00:00:00');
+
+    // Build history payload
+    const historyDays = results.map((day, dIdx) => {
+      const d = new Date(startDate + 'T00:00:00');
+      d.setDate(d.getDate() + dIdx);
+      return {
+        date: d.toISOString().split('T')[0],
+        items: day.items.map(item => ({
+          slotTime: item.slotTime,
+          isPrime: item.isPrime,
+          artDesc: item.art.description,
+          artImageUrl: item.art.imageUrl,
+          collectionName: item.collectionName,
+        })),
+      };
+    });
+
+    // Update lastUsed on arts
     setCollections(prev => prev.map(col => {
       let arts = [...col.arts];
       results.forEach((day, dIdx) => {
@@ -105,6 +124,10 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
       });
       return { ...col, arts };
     }));
+
+    // Save to history DB (non-blocking for UX)
+    saveScheduleHistory({ periodStart: startDate, periodEnd: endDate, days: historyDays }).catch(console.error);
+
     alert('Programação confirmada! Histórico de uso atualizado.');
     setResults(null);
   };
@@ -286,11 +309,11 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
                                       <div className="w-8 h-4 bg-slate-700 rounded" /><div className="w-24 h-4 bg-slate-700 rounded" />
                                     </div>
                                   ) : (
-                                    <button onClick={() => copy(item.cta, `cta-${uid}`)} className="flex items-center justify-between w-full bg-purple-900/20 hover:bg-purple-900/30 border border-purple-500/30 rounded px-3 py-2 group text-left">
+                                    <button onClick={() => copy((item.cta || '').toUpperCase().slice(0, 25), `cta-${uid}`)} className="flex items-center justify-between w-full bg-purple-900/20 hover:bg-purple-900/30 border border-purple-500/30 rounded px-3 py-2 group text-left">
                                       <div className="flex items-center gap-2 min-w-0">
                                         <Lightbulb size={12} className="text-purple-400" />
                                         <span className="text-[10px] font-bold text-purple-300 bg-purple-900/50 px-1.5 py-0.5 rounded uppercase">CRIATIVO</span>
-                                        <span className="text-xs text-white font-bold truncate uppercase">{item.cta}</span>
+                                        <span className="text-xs text-white font-bold truncate uppercase">{item.cta?.toUpperCase().slice(0, 25)}</span>
                                       </div>
                                       {copiedId === `cta-${uid}` ? <CheckCircle size={14} className="text-green-500" /> : <Copy size={14} className="text-purple-400/50 group-hover:text-purple-400" />}
                                     </button>
