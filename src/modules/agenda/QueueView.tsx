@@ -6,7 +6,7 @@ type QueueItem = {
   id: number;
   image_url: string;
   link_url: string;
-  scheduled_at: number;
+  scheduled_at: number | string;
   status: 'pending' | 'processing' | 'published' | 'failed' | 'cancelled';
   ig_post_id: string | null;
   error: string | null;
@@ -20,8 +20,8 @@ const STATUS_CONFIG = {
   cancelled:  { label: 'Cancelado',   cls: 'text-slate-500 bg-slate-500/10 border-slate-500/30',    icon: <X size={11} /> },
 };
 
-const fmtDate = (ts: number) =>
-  new Date(ts).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+const fmtDate = (ts: number | string) =>
+  new Date(Number(ts)).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
 export default function QueueView() {
   const [items, setItems]         = useState<QueueItem[]>([]);
@@ -91,7 +91,7 @@ function QueueCard({ item, cancelling, onCancel, fmtDate }: {
   item: QueueItem;
   cancelling: number | null;
   onCancel: (id: number) => void;
-  fmtDate: (ts: number) => string;
+  fmtDate: (ts: number | string) => string;
 }) {
   const sc = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.cancelled;
   return (
