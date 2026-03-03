@@ -7,6 +7,16 @@ import { saveScheduleHistory } from '../../api';
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
 
+const fmtCta = (s: string | undefined) => {
+  if (!s) return '';
+  const up = s.toUpperCase();
+  if (up.length <= 25) return up;
+  // Corta na última palavra completa antes de 25 chars
+  const cut = up.slice(0, 25);
+  const lastSpace = cut.lastIndexOf(' ');
+  return lastSpace > 0 ? cut.slice(0, lastSpace) : cut;
+};
+
 const generateCaption = async (description: string, collectionName: string, _collectionLink: string, isPrime: boolean): Promise<{ cta: string }> => {
   const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
     method: 'POST',
@@ -22,7 +32,7 @@ const generateCaption = async (description: string, collectionName: string, _col
 Coleção: "${collectionName}" | Arte: "${description}"
 ${isPrime ? 'HORÁRIO NOBRE - use urgência máxima!' : ''}
 
-Crie um CTA criativo (máx 25 caracteres, TUDO EM MAIÚSCULAS, sem pontuação no final) para um story do Instagram.
+Crie um CTA criativo (máx 18 caracteres, TUDO EM MAIÚSCULAS, sem pontuação no final, sem citar o nome da coleção) para um story do Instagram. Exemplos de bom CTA: "GARANTA O SEU", "VEM VER ISSO", "OLHA QUE INCRÍVEL", "CORRE LÁ".
 
 Return JSON: { "cta": "..." }`
       }],
@@ -309,11 +319,11 @@ export default function ScheduleView({ collections, config, setCollections }: Pr
                                       <div className="w-8 h-4 bg-slate-700 rounded" /><div className="w-24 h-4 bg-slate-700 rounded" />
                                     </div>
                                   ) : (
-                                    <button onClick={() => copy((item.cta || '').toUpperCase().slice(0, 25), `cta-${uid}`)} className="flex items-center justify-between w-full bg-purple-900/20 hover:bg-purple-900/30 border border-purple-500/30 rounded px-3 py-2 group text-left">
+                                    <button onClick={() => copy(fmtCta(item.cta), `cta-${uid}`)} className="flex items-center justify-between w-full bg-purple-900/20 hover:bg-purple-900/30 border border-purple-500/30 rounded px-3 py-2 group text-left">
                                       <div className="flex items-center gap-2 min-w-0">
                                         <Lightbulb size={12} className="text-purple-400" />
                                         <span className="text-[10px] font-bold text-purple-300 bg-purple-900/50 px-1.5 py-0.5 rounded uppercase">CRIATIVO</span>
-                                        <span className="text-xs text-white font-bold truncate uppercase">{item.cta?.toUpperCase().slice(0, 25)}</span>
+                                        <span className="text-xs text-white font-bold truncate">{fmtCta(item.cta)}</span>
                                       </div>
                                       {copiedId === `cta-${uid}` ? <CheckCircle size={14} className="text-green-500" /> : <Copy size={14} className="text-purple-400/50 group-hover:text-purple-400" />}
                                     </button>
