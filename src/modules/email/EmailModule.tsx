@@ -471,7 +471,7 @@ ${d.products.slice(1, 4).map(p => `<td width="33%" style="padding:5px;vertical-a
                       : null;
                     const sections = [
                       { label: 'Subject', content: d.subject },
-                      ...(imageHtml ? [{ label: 'Imagem', content: imageHtml }] : []),
+                      { label: 'Link CTA', content: d.products[0]?.link || '' },
                       { label: 'Corpo', content: d.body },
                       ...(collectionHtml ? [{ label: 'Coleção', content: collectionHtml }] : []),
                     ];
