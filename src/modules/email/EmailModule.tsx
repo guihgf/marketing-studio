@@ -159,7 +159,8 @@ export default function EmailModule({ xmlContent, refreshFeed, fetchingFeed, log
 
       // Nossa lógica define os produtos de cada dia — sem chamar IA para planejamento
       const today = new Date();
-      const pool = [...available];
+      // Embaralha para não pegar sempre na ordem do feed
+      const pool = [...available].sort(() => Math.random() - 0.5);
       const newDrafts: EmailDraft[] = [];
 
       for (let i = 0; i < daysToGenerate; i++) {
