@@ -63,13 +63,30 @@ const generateSingleDay = (
     if (!candidates.length) continue;
 
     const scored = candidates.map(art => {
+      // 1) Prioridade da coleção (decide qual coleção aparece)
       let score = art.collectionPriority === 'HIGH' ? 10 : art.collectionPriority === 'MEDIUM' ? 5 : 1;
       if (slot.isPrime) {
         if (art.collectionPriority === 'HIGH') score += 500;
         else if (art.collectionPriority === 'MEDIUM') score += 50;
       }
-      return { art, score, random: Math.random() };
-    }).sort((a, b) => b.score !== a.score ? b.score - a.score : b.random - a.random);
+
+      // 2) Rotação dentro da coleção: artes nunca usadas vêm primeiro,
+      //    depois as mais antigas. Bonus alto (1000+) para dominar a escolha
+      //    dentro do mesmo tier de prioridade.
+      const lastUsed = simulatedUsageMap[art.id];
+      if (!lastUsed) {
+        score += 5000; // Nunca usada — prioridade absoluta
+      } else {
+        const hoursSinceUsed = (targetTime - lastUsed) / (60 * 60 * 1000);
+        // Bonus proporcional ao tempo sem uso (até 4000 pontos em 60 dias)
+        score += Math.min(4000, (hoursSinceUsed / 1440) * 4000);
+      }
+
+      // 3) Aleatoriedade leve para variar entre artes com staleness parecido
+      score += Math.random() * 10;
+
+      return { art, score };
+    }).sort((a, b) => b.score - a.score);
 
     const selected = scored[0].art;
     const ctaSource = (slot.isPrime || selected.collectionPriority === 'HIGH') ? HIGH_PRIORITY_CTAS : STANDARD_CTAS;
